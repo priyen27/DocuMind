@@ -220,13 +220,27 @@ export default function Settings() {
         return;
       }
 
+      let reminderTimeUTC = preferences.reminderTime;
+
+      if (preferences.promptReminders && preferences.reminderTime) {
+        // Convert IST (Asia/Kolkata) to UTC before saving
+        const [hours, minutes] = preferences.reminderTime.split(':');
+        const istDate = new Date();
+        istDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+  
+        // Convert to UTC string HH:MM
+        const utcHours = istDate.getUTCHours().toString().padStart(2, '0');
+        const utcMinutes = istDate.getUTCMinutes().toString().padStart(2, '0');
+        reminderTimeUTC = `${utcHours}:${utcMinutes}`;
+      }
+
       const { error } = await supabase
         .from('users')
         .update({
           notification_settings: {
             emailNotifications: preferences.emailNotifications,
             promptReminders: preferences.promptReminders,
-            reminderTime: preferences.reminderTime || '10:00'
+            reminderTime: reminderTimeUTC  || '10:00'
           },
           updated_at: new Date().toISOString()
         })

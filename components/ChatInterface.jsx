@@ -909,7 +909,7 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
             </div>
             <div className="text-gray-500">
               <Bot size={48} className="mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium mb-2">Welcome to FileMentor</h3>
+              <h3 className="text-lg font-medium mb-2">Welcome to DocuMind</h3>
               <p>Upload documents and start asking questions</p>
               <p className="text-sm text-gray-400 mt-2">Maximum 2 files, 10MB each</p>
             </div>

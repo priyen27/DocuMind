@@ -7,21 +7,20 @@ const supabaseAdmin = createClient(
   {
     auth: {
       autoRefreshToken: false,
-      persistSession: false
-    }
+      persistSession: false,
+    },
   }
 );
 
-// Create nodemailer transporter (reuse from your send.js)
-const createTransporter = () => {
-  return nodemailer.createTransporter({
+// Create nodemailer transporter
+const createTransporter = () =>
+  nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.GMAIL_EMAIL,
       pass: process.env.GMAIL_APP_PASSWORD,
     },
   });
-};
 
 // Email template for daily reminders
 const getDailyReminderTemplate = (userName, remainingPrompts, totalPrompts, tier) => {
@@ -62,13 +61,13 @@ const getDailyReminderTemplate = (userName, remainingPrompts, totalPrompts, tier
           The Documind Team
         </p>
       </div>
-    `
+    `,
   };
 };
 
 export default async function handler(req, res) {
   console.log('=== Daily Reminders Cron Started ===');
-  
+
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
@@ -80,7 +79,6 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  // Check if email service is configured
   if (!process.env.GMAIL_EMAIL || !process.env.GMAIL_APP_PASSWORD) {
     console.error('Gmail credentials not configured');
     return res.status(500).json({ message: 'Email service not configured' });
@@ -90,9 +88,13 @@ export default async function handler(req, res) {
     const today = new Date().toISOString().split('T')[0];
     const dailyLimits = { free: 10, pro: 25, legend: 50 };
 
-    console.log(`Processing daily reminders for ${today}`);
+    // Current UTC time rounded to minutes → "HH:MM"
+    const now = new Date();
+    const hhmm = now.toISOString().substring(11, 16);
 
-    // Get all users who have email notifications and prompt reminders enabled
+    console.log(`Processing reminders for ${today} at ${hhmm} UTC`);
+
+    // Get all users with notification settings
     const { data: users, error: usersError } = await supabaseAdmin
       .from('users')
       .select('id, email, name, subscription_tier, notification_settings')
@@ -104,17 +106,30 @@ export default async function handler(req, res) {
 
     console.log(`Found ${users?.length || 0} total users`);
 
-    // Filter users who have prompt reminders enabled
+    // Filter users who:
+    // - have email + prompt reminders enabled
+    // - have reminderTime matching current time
     const eligibleUsers = (users || []).filter(user => {
       const settings = user.notification_settings || {};
-      return settings.emailNotifications && settings.promptReminders;
+      return (
+        settings.emailNotifications &&
+        settings.promptReminders &&
+        settings.reminderTime === hhmm
+      );
     });
 
-    console.log(`Found ${eligibleUsers.length} users with reminder preferences enabled`);
+    console.log(`Eligible users this minute: ${eligibleUsers.length}`);
 
-    // Get today's usage for all eligible users
+    if (eligibleUsers.length === 0) {
+      return res.status(200).json({
+        message: 'No reminders this run',
+        stats: { totalUsers: users?.length || 0, eligibleUsers: 0 },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Fetch usage data for eligible users
     const userIds = eligibleUsers.map(u => u.id);
-    
     let todayUsage = [];
     if (userIds.length > 0) {
       const { data: usageData, error: usageError } = await supabaseAdmin
@@ -125,19 +140,16 @@ export default async function handler(req, res) {
 
       if (usageError) {
         console.error('Error fetching usage data:', usageError);
-        // Continue with empty usage data
       } else {
         todayUsage = usageData || [];
       }
     }
 
-    // Create usage lookup
     const usageLookup = todayUsage.reduce((acc, usage) => {
       acc[usage.user_id] = usage.prompts_used || 0;
       return acc;
     }, {});
 
-    // Find users who need reminders
     const remindersToSend = [];
 
     for (const user of eligibleUsers) {
@@ -145,36 +157,34 @@ export default async function handler(req, res) {
       const usedPrompts = usageLookup[user.id] || 0;
       const remainingPrompts = userLimit - usedPrompts;
 
-      // Only send reminder if user has unused prompts (and has used less than 80% of their limit)
-      if (remainingPrompts > 0 && usedPrompts < (userLimit * 0.8)) {
+      if (remainingPrompts > 0 && usedPrompts < userLimit * 0.8) {
         remindersToSend.push({
           userId: user.id,
           email: user.email,
           name: user.name || 'User',
           remainingPrompts,
           totalPrompts: userLimit,
-          tier: user.subscription_tier || 'free'
+          tier: user.subscription_tier || 'free',
         });
       }
     }
 
-    console.log(`Found ${remindersToSend.length} users to send reminders to`);
+    console.log(`Reminders to send: ${remindersToSend.length}`);
 
     if (remindersToSend.length === 0) {
       return res.status(200).json({
-        message: 'No reminders to send',
+        message: 'No reminders needed',
         stats: {
           totalUsers: users?.length || 0,
           eligibleUsers: eligibleUsers.length,
-          remindersNeeded: 0
-        }
+          remindersNeeded: 0,
+        },
+        timestamp: new Date().toISOString(),
       });
     }
 
-    // Create transporter
     const transporter = createTransporter();
 
-    // Send reminders directly (instead of calling API)
     const results = await Promise.allSettled(
       remindersToSend.map(async (reminder) => {
         try {
@@ -193,36 +203,29 @@ export default async function handler(req, res) {
           };
 
           const result = await transporter.sendMail(mailOptions);
-          
-          // Log the notification
-          await supabaseAdmin
-            .from('notification_log')
-            .insert({
-              user_id: reminder.userId,
-              email_type: 'dailyReminder',
-              status: 'sent',
-              email_address: reminder.email,
-              subject: emailTemplate.subject,
-              sent_at: new Date().toISOString()
-            });
+
+          await supabaseAdmin.from('notification_log').insert({
+            user_id: reminder.userId,
+            email_type: 'dailyReminder',
+            status: 'sent',
+            email_address: reminder.email,
+            subject: emailTemplate.subject,
+            sent_at: new Date().toISOString(),
+          });
 
           console.log(`✅ Reminder sent to ${reminder.email}`);
           return { success: true, email: reminder.email, messageId: result.messageId };
-
         } catch (error) {
           console.error(`❌ Failed to send reminder to ${reminder.email}:`, error);
-          
-          // Log the failed notification
-          await supabaseAdmin
-            .from('notification_log')
-            .insert({
-              user_id: reminder.userId,
-              email_type: 'dailyReminder',
-              status: 'failed',
-              email_address: reminder.email,
-              error_message: error.message,
-              sent_at: new Date().toISOString()
-            });
+
+          await supabaseAdmin.from('notification_log').insert({
+            user_id: reminder.userId,
+            email_type: 'dailyReminder',
+            status: 'failed',
+            email_address: reminder.email,
+            error_message: error.message,
+            sent_at: new Date().toISOString(),
+          });
 
           throw error;
         }
@@ -232,25 +235,24 @@ export default async function handler(req, res) {
     const successful = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.filter(r => r.status === 'rejected').length;
 
-    console.log(`Daily reminders completed: ${successful} sent, ${failed} failed`);
+    console.log(`Reminders completed: ${successful} sent, ${failed} failed`);
 
     res.status(200).json({
-      message: 'Daily reminders processed successfully',
+      message: 'Reminders processed',
       stats: {
         totalUsers: users?.length || 0,
         eligibleUsers: eligibleUsers.length,
         remindersNeeded: remindersToSend.length,
         successful,
-        failed
+        failed,
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
-    console.error('❌ Daily reminders error:', error);
-    res.status(500).json({ 
-      message: 'Failed to process daily reminders',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    console.error('❌ Reminder processing error:', error);
+    res.status(500).json({
+      message: 'Failed to process reminders',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
     });
   }
 }
