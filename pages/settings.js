@@ -220,27 +220,13 @@ export default function Settings() {
         return;
       }
 
-      let reminderTimeUTC = preferences.reminderTime;
-
-      if (preferences.promptReminders && preferences.reminderTime) {
-        // Convert IST (Asia/Kolkata) to UTC before saving
-        const [hours, minutes] = preferences.reminderTime.split(':');
-        const istDate = new Date();
-        istDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-  
-        // Convert to UTC string HH:MM
-        const utcHours = istDate.getUTCHours().toString().padStart(2, '0');
-        const utcMinutes = istDate.getUTCMinutes().toString().padStart(2, '0');
-        reminderTimeUTC = `${utcHours}:${utcMinutes}`;
-      }
-
       const { error } = await supabase
         .from('users')
         .update({
           notification_settings: {
             emailNotifications: preferences.emailNotifications,
             promptReminders: preferences.promptReminders,
-            reminderTime: reminderTimeUTC  || '10:00'
+            reminderTime: preferences.reminderTime
           },
           updated_at: new Date().toISOString()
         })
@@ -661,7 +647,7 @@ export default function Settings() {
                           />
                         </label>
 
-                        {preferences.promptReminders && (
+                        {/* {preferences.promptReminders && (
                           <div className="ml-6 mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                             <label className="block">
                               <span className="text-sm font-medium text-gray-900">Reminder Time</span>
@@ -685,6 +671,16 @@ export default function Settings() {
                               </select>
                               <p className="text-xs text-gray-500 mt-1">
                                 Current setting: {formatReminderTime(preferences.reminderTime)}
+                              </p>
+                            </label>
+                          </div>
+                        )} */}
+                        {preferences.promptReminders && (
+                          <div className="ml-6 mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <label className="block">
+                              <span className="text-sm font-medium text-gray-900">Reminder Time</span>
+                              <p className="text-xs text-gray-500">
+                                Daily reminders are currently sent at <strong>10:00 AM</strong>.
                               </p>
                             </label>
                           </div>
