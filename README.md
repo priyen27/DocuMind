@@ -23,7 +23,7 @@ It supports **PDF, DOCX, EXCEL, PPT and images**, and provides contextual answer
 
 Clone the repository and install dependencies:
 
-```bash
+
 git clone <repo-url>
 cd documind
 npm install
