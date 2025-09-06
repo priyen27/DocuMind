@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/notifications/daily-reminders.js": {
+    "api/notifications/daily-reminders": {
       "maxDuration": 60
     }
   },
