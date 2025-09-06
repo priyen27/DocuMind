@@ -53,7 +53,3 @@ To learn more about Next.js, take a look at the following resources:
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
 - [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
 
-🚢 Deployment
-
-This project is deployed on Vercel:
-👉 https://docu-mind-afsk.vercel.app
