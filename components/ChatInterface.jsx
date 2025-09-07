@@ -859,10 +859,10 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
       />
 
       {/* Messages - Mobile optimized with proper scrolling */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto px-2 sm:px-4 space-y-3 sm:space-y-4 chat-scroll chat-messages-container
+      <div className="flex-1 overflow-y-auto px-2 pt-4 sm:px-4 space-y-3 sm:space-y-4 chat-scroll chat-messages-container
                 min-h-0">
         {shouldShowUploadInterface() ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+          <div className="flex flex-col justify-center items-center h-full text-center px-4">
             <div className="mb-6 sm:mb-8 w-full max-w-md">
               <FileUpload 
                 onUpload={handleFileUpload} 
@@ -870,12 +870,12 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
                 maxFileSize={10 * 1024 * 1024}
               />
             </div>
-            <div className="text-gray-500">
+            {/* <div className="text-gray-500">
               <Bot size={40} className="sm:w-12 sm:h-12 mx-auto mb-4 text-gray-300" />
               <h3 className="text-base sm:text-lg font-medium mb-2">Welcome to DocuMind</h3>
               <p className="text-sm sm:text-base">Upload documents and start asking questions</p>
               <p className="text-xs sm:text-sm text-gray-400 mt-2">Maximum 2 files, 10MB each</p>
-            </div>
+            </div> */}
           </div>
         ) : shouldShowReadyMessage() ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">

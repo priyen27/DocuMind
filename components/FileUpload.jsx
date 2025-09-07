@@ -17,6 +17,7 @@ export default function FileUpload({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentUpload, setCurrentUpload] = useState(null);
+  const [currentStep, setCurrentStep] = useState('');
 
   const processFile = async (file) => {
     const fileName = file.name.toLowerCase();
@@ -56,47 +57,101 @@ export default function FileUpload({
 
     try {
       setCurrentUpload(file.name);
+      setUploadProgress(0);
+      setCurrentStep('Preparing upload...');
       
       // Upload file to Supabase storage
       const fileExt = file.name.split('.').pop();
       const storagePath = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       
+      setCurrentStep('Uploading to cloud...');
+      
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('documents')
         .upload(storagePath, file, {
           onUploadProgress: (progress) => {
-            // For mobile, we'll use a slower progress update to prevent UI lag
-            const progressPercent = (progress.loaded / progress.total) * 40;
-            setUploadProgress(Math.min(progressPercent, 40));
+            // More conservative progress tracking for mobile
+            if (progress.total > 0) {
+              const percent = Math.min((progress.loaded / progress.total) * 30, 30);
+              setUploadProgress(percent);
+            }
           }
         });
 
       if (uploadError) throw uploadError;
+
+      setUploadProgress(35);
+      setCurrentStep('Getting file URL...');
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('documents')
         .getPublicUrl(storagePath);
 
-      setUploadProgress(50);
+      setUploadProgress(40);
+      setCurrentStep('Processing content...');
 
       // Extract text content with better error handling for mobile
       const formData = new FormData();
       formData.append('file', file);
 
-      const extractResponse = await fetch('/api/extract-text', {
-        method: 'POST',
-        body: formData,
-      });
+      // Add timeout and retry logic for mobile networks
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 120000); // 2 minute timeout for mobile
 
-      if (!extractResponse.ok) {
-        throw new Error(`Text extraction failed: ${extractResponse.statusText}`);
+      let extractResponse;
+      let retryCount = 0;
+      const maxRetries = 2;
+
+      while (retryCount <= maxRetries) {
+        try {
+          setUploadProgress(40 + (retryCount * 5)); // Show some progress on retries
+          
+          extractResponse = await fetch('/api/extract-text', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+          });
+
+          if (extractResponse.ok) {
+            break; // Success, exit retry loop
+          } else if (extractResponse.status >= 500 && retryCount < maxRetries) {
+            // Server error, retry
+            retryCount++;
+            setCurrentStep(`Retrying content extraction... (${retryCount}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+            continue;
+          } else {
+            throw new Error(`Text extraction failed: ${extractResponse.status} ${extractResponse.statusText}`);
+          }
+        } catch (fetchError) {
+          if (fetchError.name === 'AbortError') {
+            clearTimeout(timeoutId);
+            throw new Error('Upload timed out. Please check your connection and try again.');
+          }
+          
+          if (retryCount < maxRetries) {
+            retryCount++;
+            setCurrentStep(`Retrying... (${retryCount}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            continue;
+          } else {
+            throw fetchError;
+          }
+        }
       }
+
+      clearTimeout(timeoutId);
+      setUploadProgress(65);
+      setCurrentStep('Analyzing content...');
 
       const extractResult = await extractResponse.json();
       const { extractedText, imageData, metadata, fileType } = extractResult;
 
-      setUploadProgress(75);
+      setUploadProgress(80);
+      setCurrentStep('Saving to database...');
 
       // Save file record to database
       const fileRecord = {
@@ -123,6 +178,9 @@ export default function FileUpload({
 
       if (dbError) throw dbError;
 
+      setUploadProgress(95);
+      setCurrentStep('Finalizing...');
+
       // Track file upload
       if (user && savedFile) {
         try {
@@ -134,6 +192,7 @@ export default function FileUpload({
       }
 
       setUploadProgress(100);
+      setCurrentStep('Complete!');
 
       // Success message - shorter for mobile
       const fileTypeMessages = {
@@ -152,12 +211,16 @@ export default function FileUpload({
       console.error('Upload error:', error);
       
       // More specific error messages for mobile users
-      if (error.message.includes('Text extraction failed')) {
-        toast.error(`Upload completed but text extraction failed for "${file.name}"`);
+      if (error.message.includes('timed out') || error.message.includes('AbortError')) {
+        toast.error(`Upload timed out for "${file.name}". Please check your connection and try again.`);
+      } else if (error.message.includes('Text extraction failed')) {
+        toast.error(`Upload completed but processing failed for "${file.name}". Please try again.`);
       } else if (error.message.includes('network') || error.message.includes('NetworkError')) {
         toast.error(`Network error uploading "${file.name}". Please check your connection.`);
+      } else if (error.message.includes('413') || error.message.includes('too large')) {
+        toast.error(`File "${file.name}" is too large. Please compress it and try again.`);
       } else {
-        toast.error(`Failed to upload "${file.name}"`);
+        toast.error(`Failed to upload "${file.name}". Please try again.`);
       }
       
       return null;
@@ -175,6 +238,7 @@ export default function FileUpload({
 
     setUploading(true);
     setUploadProgress(0);
+    setCurrentStep('');
 
     try {
       if (inChat && acceptedFiles.length === 1) {
@@ -188,13 +252,17 @@ export default function FileUpload({
         const results = [];
         for (let i = 0; i < acceptedFiles.length; i++) {
           const file = acceptedFiles[i];
+          setCurrentStep(`Processing file ${i + 1} of ${acceptedFiles.length}...`);
           const result = await processFile(file);
           if (result) {
             results.push(result);
           }
           
-          // Update overall progress
-          setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
+          // Update overall progress for multi-file uploads
+          if (acceptedFiles.length > 1) {
+            const overallProgress = ((i + 1) / acceptedFiles.length) * 100;
+            setUploadProgress(overallProgress);
+          }
         }
         
         // Call onUpload with all successful uploads
@@ -206,6 +274,7 @@ export default function FileUpload({
       setUploading(false);
       setUploadProgress(0);
       setCurrentUpload(null);
+      setCurrentStep('');
     }
   }, [user, supabase, onUpload, inChat, onAddFile, maxFiles]);
 
@@ -267,8 +336,11 @@ export default function FileUpload({
             <Loader2 size={inChat ? 24 : 40} className="sm:w-12 sm:h-12 mx-auto text-blue-500 animate-spin" />
             <div>
               <p className="text-gray-600 mb-2 text-sm sm:text-base">
-                {currentUpload ? `Uploading ${currentUpload.length > 20 ? currentUpload.substring(0, 20) + '...' : currentUpload}` : 'Processing...'}
+                {currentUpload ? `${currentUpload.length > 25 ? currentUpload.substring(0, 25) + '...' : currentUpload}` : 'Processing...'}
               </p>
+              {currentStep && (
+                <p className="text-xs sm:text-sm text-gray-500 mb-2">{currentStep}</p>
+              )}
               <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                 <div 
                   className="bg-blue-600 h-1.5 sm:h-2 rounded-full transition-all duration-300"
