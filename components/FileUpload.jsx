@@ -65,7 +65,9 @@ export default function FileUpload({
         .from('documents')
         .upload(storagePath, file, {
           onUploadProgress: (progress) => {
-            setUploadProgress((progress.loaded / progress.total) * 40);
+            // For mobile, we'll use a slower progress update to prevent UI lag
+            const progressPercent = (progress.loaded / progress.total) * 40;
+            setUploadProgress(Math.min(progressPercent, 40));
           }
         });
 
@@ -78,7 +80,7 @@ export default function FileUpload({
 
       setUploadProgress(50);
 
-      // Extract text content
+      // Extract text content with better error handling for mobile
       const formData = new FormData();
       formData.append('file', file);
 
@@ -86,6 +88,10 @@ export default function FileUpload({
         method: 'POST',
         body: formData,
       });
+
+      if (!extractResponse.ok) {
+        throw new Error(`Text extraction failed: ${extractResponse.statusText}`);
+      }
 
       const extractResult = await extractResponse.json();
       const { extractedText, imageData, metadata, fileType } = extractResult;
@@ -119,25 +125,41 @@ export default function FileUpload({
 
       // Track file upload
       if (user && savedFile) {
-        await usageTracker.trackFileUpload(user.id, savedFile.id);
+        try {
+          await usageTracker.trackFileUpload(user.id, savedFile.id);
+        } catch (trackingError) {
+          console.warn('Usage tracking failed:', trackingError);
+          // Don't fail the upload for tracking errors
+        }
       }
 
-      // Success message
+      setUploadProgress(100);
+
+      // Success message - shorter for mobile
       const fileTypeMessages = {
-        'spreadsheet': `Excel file "${file.name}" processed! ${metadata?.sheetCount || 0} sheets analyzed.`,
-        'presentation': `PowerPoint "${file.name}" processed! ${metadata?.slideCount || 0} slides analyzed.`,
-        'image': `Image "${file.name}" processed! OCR ${metadata?.hasOCR ? 'completed' : 'attempted'}.`,
-        'pdf': `PDF "${file.name}" processed! ${metadata?.pages || 0} pages analyzed.`,
-        'document': `Document "${file.name}" processed successfully!`
+        'spreadsheet': `Excel file processed! ${metadata?.sheetCount || 0} sheets.`,
+        'presentation': `PowerPoint processed! ${metadata?.slideCount || 0} slides.`,
+        'image': `Image processed! OCR ${metadata?.hasOCR ? 'completed' : 'attempted'}.`,
+        'pdf': `PDF processed! ${metadata?.pages || 0} pages.`,
+        'document': `Document processed successfully!`
       };
       
-      toast.success(fileTypeMessages[fileType] || `File "${file.name}" uploaded successfully!`);
+      toast.success(fileTypeMessages[fileType] || `File uploaded successfully!`);
       
       return savedFile;
 
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error(`Failed to upload "${file.name}"`);
+      
+      // More specific error messages for mobile users
+      if (error.message.includes('Text extraction failed')) {
+        toast.error(`Upload completed but text extraction failed for "${file.name}"`);
+      } else if (error.message.includes('network') || error.message.includes('NetworkError')) {
+        toast.error(`Network error uploading "${file.name}". Please check your connection.`);
+      } else {
+        toast.error(`Failed to upload "${file.name}"`);
+      }
+      
       return null;
     }
   };
@@ -147,7 +169,7 @@ export default function FileUpload({
 
     // Check file count limit
     if (acceptedFiles.length > maxFiles) {
-      toast.error(`Maximum ${maxFiles} files allowed. Only first ${maxFiles} files will be processed.`);
+      toast.error(`Maximum ${maxFiles} files allowed. Processing first ${maxFiles} files.`);
       acceptedFiles = acceptedFiles.slice(0, maxFiles);
     }
 
@@ -205,14 +227,14 @@ export default function FileUpload({
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: acceptedTypes,
-    multiple: !inChat && maxFiles > 1, // Allow multiple files based on maxFiles
+    multiple: !inChat && maxFiles > 1,
     disabled: uploading,
     maxSize: maxFileSize
   });
 
   const renderFileTypeSupport = () => {
     return (
-      <div className="text-sm text-gray-500 space-y-1">
+      <div className="text-xs sm:text-sm text-gray-500 space-y-1">
         <p>📄 Documents: PDF, DOC, DOCX</p>
         <p>📊 Spreadsheets: XLS, XLSX</p>
         <p>📊 Presentations: PPT, PPTX</p>
@@ -226,10 +248,10 @@ export default function FileUpload({
     : "w-full max-w-md mx-auto";
 
   const dropzoneClass = inChat
-    ? `border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
+    ? `border-2 border-dashed rounded-lg p-3 sm:p-4 text-center cursor-pointer transition-colors
        ${isDragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
        ${uploading ? 'pointer-events-none opacity-50' : ''}`
-    : `border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+    : `border-2 border-dashed rounded-lg p-4 sm:p-8 text-center cursor-pointer transition-colors
        ${isDragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
        ${uploading ? 'pointer-events-none opacity-50' : ''}`;
 
@@ -241,55 +263,61 @@ export default function FileUpload({
         <input {...getInputProps()} />
         
         {uploading ? (
-          <div className="space-y-4">
-            <Loader2 size={inChat ? 32 : 48} className="mx-auto text-blue-500 animate-spin" />
+          <div className="space-y-3 sm:space-y-4">
+            <Loader2 size={inChat ? 24 : 40} className="sm:w-12 sm:h-12 mx-auto text-blue-500 animate-spin" />
             <div>
-              <p className="text-gray-600 mb-2">
-                {currentUpload ? `Uploading ${currentUpload}...` : 'Processing...'}
+              <p className="text-gray-600 mb-2 text-sm sm:text-base">
+                {currentUpload ? `Uploading ${currentUpload.length > 20 ? currentUpload.substring(0, 20) + '...' : currentUpload}` : 'Processing...'}
               </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-200 rounded-full h-1.5 sm:h-2">
                 <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-blue-600 h-1.5 sm:h-2 rounded-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
-              <p className="text-sm text-gray-500 mt-1">{Math.round(uploadProgress)}%</p>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1">{Math.round(uploadProgress)}%</p>
             </div>
           </div>
         ) : (
-          <div className={`space-y-${inChat ? '2' : '4'}`}>
+          <div className={`space-y-${inChat ? '2' : '3 sm:space-y-4'}`}>
             {inChat ? (
               <div className="flex items-center justify-center gap-2">
-                <Plus size={20} className="text-gray-400" />
-                <span className="text-gray-600 text-sm">Add another file</span>
+                <Plus size={16} className="sm:w-5 sm:h-5 text-gray-400" />
+                <span className="text-gray-600 text-xs sm:text-sm">Add another file</span>
               </div>
             ) : (
               <>
                 <div className="flex justify-center space-x-2">
-                  <FileText size={28} className="text-gray-400" />
-                  <FileSpreadsheet size={28} className="text-green-500" />
-                  <Presentation size={28} className="text-orange-500" />
-                  <Image size={28} className="text-blue-400" />
+                  <FileText size={20} className="sm:w-7 sm:h-7 text-gray-400" />
+                  <FileSpreadsheet size={20} className="sm:w-7 sm:h-7 text-green-500" />
+                  <Presentation size={20} className="sm:w-7 sm:h-7 text-orange-500" />
+                  <Image size={20} className="sm:w-7 sm:h-7 text-blue-400" />
                 </div>
                 
                 {isDragActive ? (
-                  <p className="text-blue-600 font-medium">Drop the files here...</p>
+                  <p className="text-blue-600 font-medium text-sm sm:text-base">Drop the files here...</p>
                 ) : (
-                  <div>
-                    <p className="text-gray-600 font-medium mb-2">
-                      Drag & drop files here, or click to select
+                  <div className="space-y-2 sm:space-y-3">
+                    <p className="text-gray-600 font-medium mb-2 text-sm sm:text-base">
+                      Drag & drop files or tap to select
                     </p>
-                    {renderFileTypeSupport()}
+                    <div className="hidden sm:block">
+                      {renderFileTypeSupport()}
+                    </div>
+                    {/* Simplified mobile view */}
+                    <div className="block sm:hidden">
+                      <p className="text-xs text-gray-500">PDF, DOC, XLS, PPT, Images</p>
+                    </div>
                     <div className="text-xs text-gray-400 mt-2">
-                      Max file size: {fileSizeText} • Maximum {maxFiles} files
+                      Max: {fileSizeText} • {maxFiles} files
                     </div>
                     <p className="text-xs text-blue-600 mt-2">
-                      ✨ Advanced AI analysis for all formats!
+                      ✨ AI analysis for all formats!
                     </p>
                   </div>
                 )}
                 
-                <Upload size={24} className="mx-auto text-gray-400" />
+                <Upload size={20} className="sm:w-6 sm:h-6 mx-auto text-gray-400" />
               </>
             )}
           </div>

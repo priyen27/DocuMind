@@ -28,6 +28,9 @@ module.exports = {
           "100%": { transform: "translateY(0)", opacity: "1" },
         },
       },
+      screens: {
+        'xs': '475px', // Custom breakpoint for extra small screens
+      }
     },
   },
   plugins: [],

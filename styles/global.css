@@ -49,3 +49,403 @@
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+
+/* Mobile-first responsive breakpoints */
+@media (max-width: 475px) {
+  .xs\:block {
+    display: block;
+  }
+  
+  .xs\:inline {
+    display: inline;
+  }
+  
+  .xs\:hidden {
+    display: none;
+  }
+}
+
+/* Safe area handling for mobile devices */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Prevent horizontal scroll on mobile */
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Better touch targets for mobile */
+@media (max-width: 768px) {
+  button, 
+  [role="button"], 
+  input[type="button"], 
+  input[type="submit"], 
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Improved textarea resizing on mobile */
+textarea {
+  resize: none;
+  field-sizing: content;
+}
+
+@supports (field-sizing: content) {
+  textarea {
+    field-sizing: content;
+    max-height: 120px;
+  }
+}
+
+/* Better scrolling for chat messages */
+.chat-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Mobile-specific improvements */
+@media (max-width: 640px) {
+  /* Ensure full width usage on mobile */
+  .chat-interface-mobile {
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: auto;
+  }
+  
+  /* Mobile message layout */
+  .mobile-message {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  
+  /* Mobile input area */
+  .mobile-input-container {
+    width: 100%;
+    min-width: 0;
+    flex-shrink: 0;
+  }
+  
+  /* Mobile file attachments */
+  .mobile-file-attachments {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Mobile suggestions */
+  .mobile-suggestions {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  
+  .mobile-suggestions::-webkit-scrollbar {
+    height: 3px;
+  }
+  
+  .mobile-suggestions::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  .mobile-suggestions::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 2px;
+  }
+}
+
+/* Prevent zoom on input focus on iOS */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Loading spinner optimization for mobile */
+@media (max-width: 640px) {
+  .animate-spin {
+    animation-duration: 1s;
+  }
+}
+
+/* Better modal handling on mobile */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0;
+  }
+  
+  .modal-content {
+    border-radius: 0;
+    height: 100vh;
+    width: 100vw;
+    max-height: 100vh;
+    max-width: 100vw;
+  }
+}
+
+/* File preview optimizations */
+@media (max-width: 640px) {
+  .file-preview-container {
+    padding: 8px;
+  }
+  
+  .file-preview-header {
+    padding: 12px 8px;
+  }
+  
+  .file-preview-content {
+    min-height: 300px;
+  }
+}
+
+/* Toast notifications positioning for mobile */
+@media (max-width: 640px) {
+  .toast-container {
+    bottom: env(safe-area-inset-bottom, 20px);
+    left: 10px;
+    right: 10px;
+    top: auto;
+  }
+}
+
+/* Better dropzone for mobile */
+@media (max-width: 640px) {
+  .dropzone-mobile {
+    min-height: 120px;
+    padding: 16px 12px;
+  }
+  
+  .dropzone-mobile .file-icons {
+    gap: 8px;
+  }
+  
+  .dropzone-mobile .file-icons svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Sidebar improvements */
+@media (max-width: 1024px) {
+  .mobile-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 280px;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  .mobile-sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 40;
+  }
+}
+
+/* Header improvements for mobile */
+@media (max-width: 640px) {
+  .mobile-header {
+    padding: 8px 12px;
+    min-height: 56px;
+  }
+  
+  .view-switcher {
+    padding: 2px;
+    gap: 2px;
+  }
+  
+  .view-switcher button {
+    padding: 6px 8px;
+    font-size: 12px;
+    min-width: 60px;
+  }
+}
+
+/* Chat input improvements */
+@media (max-width: 640px) {
+  .chat-input-container {
+    padding: 12px;
+    gap: 8px;
+  }
+  
+  .chat-input {
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 16px; /* Prevent zoom on iOS */
+    line-height: 1.4;
+  }
+  
+  .chat-send-button {
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    flex-shrink: 0;
+  }
+}
+
+/* Message bubbles optimization */
+@media (max-width: 640px) {
+  .message-bubble {
+    padding: 8px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+  
+  .message-container {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  
+  /* Ensure messages are fully visible on mobile with horizontal scroll */
+  .chat-messages-container {
+    padding: 8px;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Mobile horizontal scroll indicators */
+  .chat-messages-container::-webkit-scrollbar {
+    height: 4px;
+    width: 4px;
+  }
+  
+  .chat-messages-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 2px;
+  }
+  
+  .chat-messages-container::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 2px;
+  }
+  
+  .chat-messages-container::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+}
+
+/* File attachment improvements */
+@media (max-width: 640px) {
+  .file-attachment {
+    max-width: 100px;
+    font-size: 10px;
+  }
+  
+  .file-attachment .file-name {
+    max-width: 80px;
+  }
+  
+  .file-attachment button {
+    padding: 2px;
+  }
+  
+  .file-attachment svg {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+/* Usage indicator improvements */
+@media (max-width: 640px) {
+  .usage-indicator {
+    padding: 8px 12px;
+    font-size: 11px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .usage-files {
+    width: 100%;
+    overflow-x: auto;
+    gap: 4px;
+  }
+  
+  .usage-files::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Analytics panel improvements */
+@media (max-width: 640px) {
+  .analytics-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+  }
+  
+  .analytics-header {
+    padding: 12px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .analytics-content {
+    padding: 16px 12px;
+    overflow-y: auto;
+    height: calc(100vh - 60px);
+  }
+}
+
+/* Loading states */
+@media (max-width: 640px) {
+  .loading-spinner {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .loading-text {
+    font-size: 14px;
+    margin-top: 8px;
+  }
+}
+
+/* Improved button spacing */
+@media (max-width: 640px) {
+  .button-group {
+    gap: 8px;
+  }
+  
+  .button-small {
+    padding: 6px 12px;
+    font-size: 12px;
+    min-height: 36px;
+  }
+  
+  .button-icon-small svg {
+    width: 14px;
+    height: 14px;
+  }
+}
