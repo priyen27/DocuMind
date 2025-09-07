@@ -1027,7 +1027,7 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
 
       {/* Input - Mobile optimized with horizontal scroll */}
       <div className="border-t border-gray-200 p-2 sm:p-4 safe-area-bottom bg-white sticky bottom-0 flex-shrink-0">
-        <div className="flex items-end gap-2 sm:gap-3 w-full min-w-0 mobile-input-container">
+        <div className="flex items-center gap-2 sm:gap-3 w-full min-w-0 mobile-input-container">
           {/* Textarea (takes remaining space, can shrink) */}
           <div className="flex-1 min-w-0">
             <textarea
