@@ -2,7 +2,6 @@ import formidable from 'formidable';
 import fs from 'fs';
 import mammoth from 'mammoth';
 import pdf from 'pdf-parse';
-import Tesseract from 'tesseract.js';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import xml2js from 'xml2js';
@@ -161,6 +160,13 @@ export default async function handler(req, res) {
     const mimeType = file.mimetype;
     const fileName = file.originalFilename?.toLowerCase() || '';
     
+    // Remove all image handling - reject image files
+    if (mimeType?.startsWith('image/')) {
+      return res.status(400).json({ 
+        message: 'Image files are not supported. Please upload PDF, Word, Excel, or PowerPoint documents.' 
+      });
+    }
+    
     if (mimeType === 'application/pdf') {
       const buffer = fs.readFileSync(file.filepath);
       const data = await pdf(buffer);
@@ -216,44 +222,10 @@ export default async function handler(req, res) {
         };
       }
       
-    } else if (mimeType.startsWith('image/')) {
-      try {
-        // Perform OCR to extract text from image
-        const { data: { text } } = await Tesseract.recognize(file.filepath, 'eng', {
-          logger: m => console.log('OCR Progress:', m)
-        });
-        
-        extractedText = text.trim() || '[No readable text found in image]';
-        
-        // Also store base64 image data for vision models
-        const buffer = fs.readFileSync(file.filepath);
-        imageData = {
-          data: buffer.toString('base64'),
-          mimeType: mimeType
-        };
-        
-        metadata = {
-          type: 'image',
-          hasOCR: true,
-          ocrConfidence: 'medium' // Could be enhanced with actual confidence scores
-        };
-                
-      } catch (ocrError) {
-        console.error('OCR Error:', ocrError);
-        extractedText = '[OCR failed - image processing error]';
-        metadata = {
-          type: 'image',
-          hasOCR: false,
-          error: 'OCR failed'
-        };
-      }
-      
     } else {
-      extractedText = `[Unsupported file type: ${mimeType}]`;
-      metadata = {
-        type: 'unknown',
-        mimeType
-      };
+      return res.status(400).json({ 
+        message: `Unsupported file type: ${mimeType}. Please upload PDF, Word, Excel, or PowerPoint documents.` 
+      });
     }
 
     // Clean up temporary file
@@ -261,8 +233,8 @@ export default async function handler(req, res) {
 
     res.status(200).json({ 
       extractedText,
-      imageData, // Include image data for vision models
-      metadata, // Include file metadata
+      imageData, // Will always be null now
+      metadata,
       fileType: getFileCategory(mimeType, fileName)
     });
 
@@ -272,9 +244,8 @@ export default async function handler(req, res) {
   }
 }
 
-// Helper function to categorize file types
+// Helper function to categorize file types (remove image category)
 function getFileCategory(mimeType, fileName = '') {
-  if (mimeType.startsWith('image/')) return 'image';
   if (mimeType === 'application/pdf') return 'pdf';
   if (mimeType.includes('wordprocessing') || mimeType === 'application/msword') return 'document';
   if (mimeType.includes('spreadsheet') || mimeType === 'application/vnd.ms-excel') return 'spreadsheet';

@@ -40,7 +40,6 @@ export default function Dashboard() {
         .eq('id', user.id)
         .single();
       
-      console.log('>>> userData', userData);
       
       if (error) throw error;
       
@@ -176,6 +175,7 @@ export default function Dashboard() {
           userPlan={userPlan}
           dailyPromptsUsed={dailyPromptsUsed}
           onUpgradeClick={() => router.push('/pricing')}
+          userProfile={userProfile}
         />
         
         {/* Main Content */}

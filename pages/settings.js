@@ -32,6 +32,10 @@ export default function Settings() {
   const [testEmailLoading, setTestEmailLoading] = useState(false);
   const [notificationHistory, setNotificationHistory] = useState([]);
   const [lastTestEmail, setLastTestEmail] = useState(null);
+
+  const [avatarPreview, setAvatarPreview] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+
   
   // Profile settings
   const [profile, setProfile] = useState({
@@ -213,12 +217,8 @@ export default function Settings() {
 
     setLoading(true);
     try {
-      // Validate reminder time if reminders are enabled
-      if (preferences.promptReminders && !preferences.reminderTime) {
-        toast.error('Please select a reminder time');
-        setLoading(false);
-        return;
-      }
+      // Set default reminder time to 10:00 AM IST if reminders are enabled
+      const reminderTime = preferences.promptReminders ? '10:00' : preferences.reminderTime;
 
       const { error } = await supabase
         .from('users')
@@ -226,13 +226,19 @@ export default function Settings() {
           notification_settings: {
             emailNotifications: preferences.emailNotifications,
             promptReminders: preferences.promptReminders,
-            reminderTime: preferences.reminderTime
+            reminderTime: reminderTime // Always 10:00 AM IST for now
           },
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
         
       if (error) throw error;
+
+      // Update local state
+      setPreferences(prev => ({
+        ...prev,
+        reminderTime: reminderTime
+      }));
 
       // Send confirmation email if email notifications are enabled
       if (preferences.emailNotifications) {
@@ -249,13 +255,11 @@ export default function Settings() {
           if (!response.ok) {
             const errorData = await response.json();
             console.error('Failed to send confirmation email:', errorData);
-            // Don't fail the save operation, just log the error
           } else {
             console.log('Confirmation email sent successfully');
           }
         } catch (emailError) {
           console.error('Error sending confirmation email:', emailError);
-          // Don't fail the save operation if email fails
         }
       }
       
@@ -328,94 +332,143 @@ export default function Settings() {
 
 
   const exportData = async () => {
-    // Check if user has Legend plan
-    if (userProfile.subscription_tier !== 'legend') {
-      toast.error('Data export is only available for Legend users. Upgrade your plan to access this feature.');
-      return;
-    }
-
     setLoading(true);
     try {
-      // Show progress to user
-      toast.loading('Preparing your data for export...', { id: 'export-progress' });
-
-      const [filesResult, sessionsResult, messagesResult, analyticsResult, usageResult] = await Promise.all([
+      const progressToast = toast.loading('Preparing your data for export...', { 
+        id: 'export-progress',
+        duration: Infinity 
+      });
+  
+      toast.loading('Fetching your files and conversations...', { id: 'export-progress' });
+  
+      const [filesResult, sessionsResult, messagesResult, usageResult] = await Promise.all([
         supabase.from('files').select('*').eq('user_id', user.id),
         supabase.from('chat_sessions').select('*').eq('user_id', user.id),
         supabase.from('messages').select('*').eq('user_id', user.id),
-        supabase.from('file_analytics').select('*').eq('user_id', user.id),
         supabase.from('daily_usage').select('*').eq('user_id', user.id)
       ]);
-
-      // Prepare comprehensive export data with metadata
+  
+      // Update progress
+      toast.loading('Processing your data...', { id: 'export-progress' });
+  
+      // Calculate some useful statistics
+      const totalCharacters = messagesResult.data?.reduce((sum, msg) => sum + (msg.content?.length || 0), 0) || 0;
+      const totalFiles = filesResult.data?.length || 0;
+      const totalSessions = sessionsResult.data?.length || 0;
+      const totalMessages = messagesResult.data?.length || 0;
+  
+      // Group messages by session for better organization
+      const messagesBySessions = {};
+      messagesResult.data?.forEach(msg => {
+        if (!messagesBySessions[msg.session_id]) {
+          messagesBySessions[msg.session_id] = [];
+        }
+        messagesBySessions[msg.session_id].push(msg);
+      });
+  
+      // Prepare comprehensive export data with better structure
       const exportData = {
         exportInfo: {
           userId: user.id,
           userEmail: user.email,
           plan: userProfile.subscription_tier,
           exportDate: new Date().toISOString(),
-          dataVersion: '2.0'
+          exportVersion: '2.1',
+          totalSize: `${Math.round(totalCharacters / 1024)} KB`
         },
+        
         profile: {
           name: userProfile.name,
           email: userProfile.email,
           subscription_tier: userProfile.subscription_tier,
           created_at: userProfile.created_at,
-          preferences: userProfile.preferences
+          notification_settings: userProfile.notification_settings
         },
-        files: {
-          count: filesResult.data?.length || 0,
-          data: filesResult.data || []
+        
+        summary: {
+          totalFiles,
+          totalSessions,
+          totalMessages,
+          totalCharacters,
+          accountAgeInDays: userProfile.created_at ? 
+            Math.floor((new Date() - new Date(userProfile.created_at)) / (1000 * 60 * 60 * 24)) : 0,
+          mostActiveDay: usageResult.data?.reduce((max, day) => 
+            day.prompts_used > (max?.prompts_used || 0) ? day : max, null)?.date || 'N/A'
         },
+        
         chatSessions: {
-          count: sessionsResult.data?.length || 0,
-          data: sessionsResult.data || []
+          count: totalSessions,
+          sessions: sessionsResult.data?.map(session => ({
+            ...session,
+            messages: messagesBySessions[session.id] || [],
+            messageCount: messagesBySessions[session.id]?.length || 0
+          })) || []
         },
-        messages: {
-          count: messagesResult.data?.length || 0,
-          data: messagesResult.data || []
+        
+        files: {
+          count: totalFiles,
+          data: filesResult.data?.map(file => ({
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            uploaded_at: file.uploaded_at,
+            // Remove sensitive data like file content URLs
+          })) || []
         },
-        analytics: {
-          count: analyticsResult.data?.length || 0,
-          data: analyticsResult.data || []
-        },
+        
         usageHistory: {
           count: usageResult.data?.length || 0,
-          data: usageResult.data || []
-        },
-        currentUsageStats: usageStats,
-        summary: {
-          totalFiles: filesResult.data?.length || 0,
-          totalSessions: sessionsResult.data?.length || 0,
-          totalMessages: messagesResult.data?.length || 0,
-          accountAge: userProfile.created_at ? 
-            Math.floor((new Date() - new Date(userProfile.created_at)) / (1000 * 60 * 60 * 24)) : 0
+          data: usageResult.data || [],
+          totalPromptsUsed: usageResult.data?.reduce((sum, day) => sum + day.prompts_used, 0) || 0,
+          totalFilesUploaded: usageResult.data?.reduce((sum, day) => sum + day.files_uploaded, 0) || 0
         }
       };
-
-      // Create and download file
+  
+      // Update progress
+      toast.loading('Creating download file...', { id: 'export-progress' });
+  
+      // Create and download file with better naming
+      const timestamp = new Date().toISOString().split('T')[0];
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
         type: 'application/json' 
       });
+      
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `documind-export-${user.id}-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `documind-export-${timestamp}.json`;
+      
+      // Trigger download
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
+  
+      // Success message with details
       toast.dismiss('export-progress');
-      toast.success(`Data exported successfully! ${exportData.summary.totalFiles} files, ${exportData.summary.totalMessages} messages included.`);
+      toast.success(
+        `Export complete! Downloaded: ${totalFiles} files, ${totalMessages} messages, ${totalSessions} conversations.`,
+        { duration: 6000 }
+      );
+  
+      // Optional: Show export summary in a modal or toast
+      console.log('Export Summary:', {
+        files: totalFiles,
+        conversations: totalSessions,
+        messages: totalMessages,
+        dataSize: `${Math.round(JSON.stringify(exportData).length / 1024)} KB`
+      });
+  
     } catch (error) {
       console.error('Error exporting data:', error);
       toast.dismiss('export-progress');
-      toast.error('Failed to export data. Please try again.');
+      toast.error(`Export failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
+  
 
   const deleteAccount = async () => {
     if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
@@ -485,12 +538,57 @@ export default function Settings() {
     { id: 'data', name: 'Data Management', icon: Download }
   ];
 
-  const formatReminderTime = (time) => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
+  const previewExportData = async () => {
+    try {
+      const [filesCount, sessionsCount, messagesCount, usageCount] = await Promise.all([
+        supabase.from('files').select('id', { count: 'exact' }).eq('user_id', user.id),
+        supabase.from('chat_sessions').select('id', { count: 'exact' }).eq('user_id', user.id),
+        supabase.from('messages').select('id', { count: 'exact' }).eq('user_id', user.id),
+        supabase.from('daily_usage').select('id', { count: 'exact' }).eq('user_id', user.id)
+      ]);
+  
+      const preview = {
+        files: filesCount.count,
+        conversations: sessionsCount.count,
+        messages: messagesCount.count,
+        usageRecords: usageCount.count
+      };
+  
+      toast.success(
+        `Ready to export: ${preview.files} files, ${preview.conversations} conversations, ${preview.messages} messages`,
+        { duration: 4000 }
+      );
+      
+      return preview;
+    } catch (error) {
+      toast.error('Failed to preview export data');
+      return null;
+    }
+  };
+
+  const handleAvatarChange = (url) => {
+    setProfile(prev => ({ ...prev, avatar_url: url }));
+    setAvatarError('');
+    
+    if (url) {
+      const img = new Image();
+      img.onload = () => {
+        setAvatarPreview(url);
+        setAvatarError('');
+      };
+      img.onerror = () => {
+        setAvatarPreview('');
+        setAvatarError('Invalid image URL or image failed to load');
+      };
+      img.src = url;
+    } else {
+      setAvatarPreview('');
+    }
+  };
+
+  const generateInitialsAvatar = (name) => {
+    const initials = name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=3b82f6&color=ffffff&size=200&format=png`;
   };
 
   return (
@@ -589,17 +687,108 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Avatar URL
-                      </label>
-                      <input
-                        type="url"
-                        value={profile.avatar_url}
-                        onChange={(e) => setProfile(prev => ({ ...prev, avatar_url: e.target.value }))}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="https://example.com/avatar.jpg"
-                      />
+  <label className="block text-sm font-medium text-gray-700 mb-2">
+    Profile Picture
+  </label>
+  
+  {/* Avatar Preview */}
+  <div className="flex items-start gap-4 mb-4">
+    <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+      {avatarPreview || profile.avatar_url ? (
+        <img 
+          src={avatarPreview || profile.avatar_url} 
+          alt="Avatar preview" 
+          className="w-full h-full object-cover"
+          onError={() => {
+            setAvatarPreview('');
+            setAvatarError('Image failed to load');
+          }}
+        />
+      ) : (
+        <User size={32} className="text-white" />
+      )}
+    </div>
+    <div className="flex-1">
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => handleAvatarChange(generateInitialsAvatar(profile.name || 'User'))}
+          className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md transition-colors"
+        >
+          Use Initials Avatar
+        </button>
+        <p className="text-xs text-gray-500">
+          Or enter a custom image URL below
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {/* URL Input */}
+  <div className="space-y-2">
+    <input
+      type="url"
+      value={profile.avatar_url}
+      onChange={(e) => handleAvatarChange(e.target.value)}
+      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+        avatarError ? 'border-red-300' : 'border-gray-300'
+      }`}
+      placeholder="https://example.com/avatar.jpg"
+    />
+    
+    {avatarError && (
+      <p className="text-sm text-red-600 flex items-center gap-1">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {avatarError}
+      </p>
+    )}
+  </div>
+
+                  {/* Avatar Guidelines */}
+                  <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-900 mb-2">Avatar Guidelines</h4>
+                    <ul className="text-xs text-gray-600 space-y-1">
+                      <li>• Use image URLs from trusted sources (imgur, cloudinary, etc.)</li>
+                      <li>• Recommended size: 200x200 pixels or larger</li>
+                      <li>• Supported formats: JPG, PNG, WebP</li>
+                      <li>• For privacy, avoid using personal photos</li>
+                    </ul>
+                    
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <p className="text-xs text-gray-500">
+                        <strong>Suggested sources:</strong>
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        <a 
+                          href="https://ui-avatars.com/" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          UI Avatars
+                        </a>
+                        <a 
+                          href="https://www.gravatar.com/" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Gravatar
+                        </a>
+                        <a 
+                          href="https://avatars.dicebear.com/" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          DiceBear
+                        </a>
+                      </div>
                     </div>
+                  </div>
+                </div>
 
                     <button
                       onClick={saveProfile}
@@ -909,88 +1098,82 @@ export default function Settings() {
 
               {activeTab === 'data' && (
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Data Management</h2>
-                  
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 mb-4">Export Data</h3>
-                      
-                      {/* userProfile.subscription_tier === 'legend' */}
-                      {true ? (
+                  <h3 className="font-semibold text-gray-900 mb-4">Export Data</h3>
+                
+                  <div>
+                    <p className="text-gray-600 mb-4">
+                      Download a comprehensive copy of all your data including files, conversations, analytics, and settings.
+                    </p>
+                
+                    {/* User Guidance Section */}
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-5 h-5 text-amber-600 mt-0.5">
+                          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
                         <div>
-                          <p className="text-gray-600 mb-4">
-                            Download a comprehensive copy of all your data including files, conversations, analytics, and settings.
-                          </p>
-                          <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg mb-4">
-                            <div className="flex items-start gap-3">
-                              <Crown className="w-5 h-5 text-purple-600 mt-0.5" />
-                              <div>
-                                <h4 className="font-medium text-purple-900">Export Features</h4>
-                                <ul className="text-sm text-purple-700 mt-1 list-disc list-inside space-y-1">
-                                  <li>Complete chat history with timestamps</li>
-                                  <li>All uploaded files metadata</li>
-                                  <li>Usage analytics and statistics</li>
-                                  <li>Account preferences and settings</li>
-                                  <li>Structured JSON format for easy import</li>
-                                </ul>
-                              </div>
+                          <h4 className="font-medium text-amber-900 mb-2">How to Export Your Data</h4>
+                          <div className="text-sm text-amber-800 space-y-2">
+                            <div className="flex items-start gap-2">
+                              <span className="bg-amber-200 text-amber-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">1</span>
+                              <span><strong>Preview:</strong> Click "Preview Export Data" to see what data will be included in your export</span>
                             </div>
-                          </div>
-                          <button
-                            onClick={exportData}
-                            disabled={loading}
-                            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
-                          >
-                            <Download size={18} />
-                            {loading ? 'Preparing Export...' : 'Export My Data'}
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                          <div className="flex items-start gap-3">
-                            <Lock className="w-5 h-5 text-gray-400 mt-0.5" />
-                            <div>
-                              <h4 className="font-medium text-gray-900">Export Not Available</h4>
-                              <p className="text-sm text-gray-600 mt-1 mb-3">
-                                Data export is only available for Legend users. Upgrade your plan to access this premium feature.
-                              </p>
-                              <div className="flex items-center gap-4">
-                                <button
-                                  onClick={() => router.push('/pricing')}
-                                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                                >
-                                  <Crown size={16} />
-                                  Upgrade to Legend
-                                </button>
-                                <div className="text-sm text-gray-500">
-                                  Only <span className="font-semibold text-purple-600">$15/month</span>
-                                </div>
-                              </div>
+                            <div className="flex items-start gap-2">
+                              <span className="bg-amber-200 text-amber-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">2</span>
+                              <span><strong>Export:</strong> Click "Export My Data" to download a JSON file containing all your information</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="bg-amber-200 text-amber-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">3</span>
+                              <span><strong>Use:</strong> The exported file can be opened in any text editor or imported into other applications</span>
                             </div>
                           </div>
                         </div>
-                      )}
-                    </div>
-
-                    <div className="border-t border-gray-200 pt-6">
-                      <h3 className="font-semibold text-red-600 mb-4">Danger Zone</h3>
-                      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-                        <h4 className="font-medium text-red-900 mb-2">Delete Account</h4>
-                        <p className="text-sm text-red-700 mb-4">
-                          Permanently delete your account and all associated data. This action cannot be undone.
-                        </p>
-                        <button
-                          onClick={deleteAccount}
-                          disabled={loading}
-                          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 size={18} />
-                          {loading ? 'Deleting...' : 'Delete Account'}
-                        </button>
                       </div>
                     </div>
+                    
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+                      <div className="flex items-start gap-3">
+                        <Download className="w-5 h-5 text-blue-600 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-blue-900">What's Included in Your Export</h4>
+                          <ul className="text-sm text-blue-700 mt-1 list-disc list-inside space-y-1">
+                            <li>Complete chat history with timestamps</li>
+                            <li>All uploaded files metadata (names, sizes, upload dates)</li>
+                            <li>Usage analytics and statistics</li>
+                            <li>Account preferences and settings</li>
+                            <li>Structured JSON format for easy processing</li>
+                          </ul>
+                          <div className="mt-2 p-2 bg-blue-100 rounded text-xs text-blue-800">
+                            <strong>Note:</strong> File contents are not included for privacy and size reasons - only metadata is exported.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Button group with preview and export */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={previewExportData}
+                        disabled={loading}
+                        className="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 border border-gray-300"
+                      >
+                        <Eye size={18} />
+                        Preview Export Data
+                      </button>
+                      
+                      <button
+                        onClick={exportData}
+                        disabled={loading}
+                        className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+                      >
+                        <Download size={18} />
+                        {loading ? 'Preparing Export...' : 'Export My Data'}
+                      </button>
+                    </div>
                   </div>
-                </div>
+              </div>
               )}
             </div>
           </div>

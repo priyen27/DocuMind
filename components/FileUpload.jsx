@@ -36,11 +36,7 @@ export default function FileUpload({
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp'
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     ];
 
     // Validate file type
@@ -286,11 +282,7 @@ export default function FileUpload({
     'application/vnd.ms-excel': ['.xls'],
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
     'application/vnd.ms-powerpoint': ['.ppt'],
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
-    'image/jpeg': ['.jpg', '.jpeg'],
-    'image/png': ['.png'],
-    'image/gif': ['.gif'],
-    'image/webp': ['.webp']
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx']
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -307,7 +299,6 @@ export default function FileUpload({
         <p>📄 Documents: PDF, DOC, DOCX</p>
         <p>📊 Spreadsheets: XLS, XLSX</p>
         <p>📊 Presentations: PPT, PPTX</p>
-        <p>🖼️ Images: JPG, PNG, GIF, WebP</p>
       </div>
     );
   };
@@ -363,7 +354,6 @@ export default function FileUpload({
                   <FileText size={20} className="sm:w-7 sm:h-7 text-gray-400" />
                   <FileSpreadsheet size={20} className="sm:w-7 sm:h-7 text-green-500" />
                   <Presentation size={20} className="sm:w-7 sm:h-7 text-orange-500" />
-                  <Image size={20} className="sm:w-7 sm:h-7 text-blue-400" />
                 </div>
                 
                 {isDragActive ? (

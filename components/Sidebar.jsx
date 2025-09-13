@@ -27,7 +27,8 @@ export default function Sidebar({
   user, 
   userPlan, 
   dailyPromptsUsed,
-  onUpgradeClick 
+  onUpgradeClick,
+  userProfile
 }) {
   const supabase = useSupabaseClient();
   const router = useRouter();
@@ -47,9 +48,7 @@ export default function Sidebar({
   // Real-time listeners for session and message updates
   useEffect(() => {
     if (!user?.id) return;
-    
-    console.log('Setting up real-time listeners for user:', user.id);
-    
+        
     // Listen for new chat sessions
     const sessionChannel = supabase
       .channel('chat_sessions_changes')
@@ -62,7 +61,6 @@ export default function Sidebar({
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('New session created:', payload);
           fetchChatSessions();
         }
       )
@@ -75,7 +73,6 @@ export default function Sidebar({
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Session updated:', payload);
           fetchChatSessions();
         }
       )
@@ -92,7 +89,6 @@ export default function Sidebar({
           table: 'messages'
         },
         (payload) => {
-          console.log('New message added:', payload);
           // Refresh sessions to update message counts
           fetchChatSessions();
         }
@@ -100,7 +96,6 @@ export default function Sidebar({
       .subscribe();
 
     return () => {
-      console.log('Cleaning up real-time listeners');
       supabase.removeChannel(sessionChannel);
       supabase.removeChannel(messageChannel);
     };
@@ -175,7 +170,6 @@ export default function Sidebar({
       }) || [];
       
       setChatSessions(processedSessions);
-      console.log('Fetched chat sessions:', processedSessions);
     } catch (error) {
       console.error('Error fetching chat sessions:', error);
     } finally {
@@ -387,7 +381,6 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* User Profile Section */}
         <div className="border-t border-gray-200 p-4">
           {/* User Menu */}
           <div className="relative">
@@ -396,12 +389,28 @@ export default function Sidebar({
               className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                  <User size={14} className="text-white" />
+                {/* Updated Avatar Display */}
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                  {userProfile?.avatar_url ? (
+                    <img 
+                      src={userProfile.avatar_url} 
+                      alt="Profile" 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback to initials if image fails to load
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <User size={14} className="text-white" style={{ 
+                    display: userProfile?.avatar_url ? 'none' : 'block' 
+                  }} />
                 </div>
+                
                 <div className="text-left">
                   <p className="text-sm font-medium text-gray-900 truncate max-w-32">
-                    {user?.email?.split('@')[0] || 'User'}
+                    {userProfile?.name || user?.email?.split('@')[0] || 'User'}
                   </p>
                   <div className={`flex items-center gap-1 ${planInfo.bgColor} ${planInfo.textColor} px-2 py-0.5 rounded-full`}>
                     {PlanIcon && <PlanIcon className="w-3 h-3" />}
@@ -418,35 +427,58 @@ export default function Sidebar({
               />
             </button>
 
-            {/* Dropdown Menu */}
-            {showUserMenu && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50">
-                <div className="px-3 py-2 border-b border-gray-100">
-                  <p className="text-xs text-gray-500">Signed in as</p>
-                  <p className="text-sm font-medium text-gray-900 truncate">{user?.email}</p>
-                </div>
-                
-                <button
-                  onClick={() => router.push('/settings')}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Settings size={16} />
-                  Settings
-                </button>
-                
-                <div className="border-t border-gray-100 mt-2 pt-2">
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <LogOut size={16} />
-                    Sign Out
-                  </button>
-                </div>
+                {/* Dropdown Menu */}
+                {showUserMenu && (
+                  <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50">
+                    <div className="px-3 py-2 border-b border-gray-100">
+                      <div className="flex items-center gap-3 mb-2">
+                        {/* Larger Avatar in Dropdown */}
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                          {userProfile?.avatar_url ? (
+                            <img 
+                              src={userProfile.avatar_url} 
+                              alt="Profile" 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <User size={16} className="text-white" style={{ 
+                            display: userProfile?.avatar_url ? 'none' : 'block' 
+                          }} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {userProfile?.name || 'User'}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={() => router.push('/settings')}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <Settings size={16} />
+                      Settings
+                    </button>
+                    
+                    <div className="border-t border-gray-100 mt-2 pt-2">
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <LogOut size={16} />
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
           </div>
-        </div>
       </div>
     </>
   );

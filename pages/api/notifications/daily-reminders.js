@@ -1,70 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  }
-);
-
-// Create nodemailer transporter
-const createTransporter = () =>
-  nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_EMAIL,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  });
-
-// Email template for daily reminders
-const getDailyReminderTemplate = (userName, remainingPrompts, totalPrompts, tier) => {
-  return {
-    subject: "Don't forget your daily prompts - Documind",
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #3B82F6; margin: 0;">Documind</h1>
-        </div>
-        <h2 style="color: #F59E0B;">Don't Miss Out! ⏰</h2>
-        <p>Hi ${userName},</p>
-        <p>You still have <strong>${remainingPrompts} out of ${totalPrompts}</strong> daily prompts available today!</p>
-        
-        <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; border-left: 4px solid #F59E0B; margin: 20px 0;">
-          <p style="margin: 0 0 10px 0;"><strong>Your ${tier} plan includes:</strong></p>
-          <ul style="margin: 0; padding-left: 20px;">
-            <li style="margin: 5px 0;">${totalPrompts} prompts per day</li>
-            <li style="margin: 5px 0;">AI-powered file analysis</li>
-            <li style="margin: 5px 0;">Smart document insights</li>
-          </ul>
-        </div>
-
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/chat" 
-             style="background-color: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Start Analyzing Files
-          </a>
-        </div>
-
-        <p style="font-size: 12px; color: #6b7280;">
-          You can disable these reminders in your <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/settings" style="color: #3B82F6;">account settings</a>.
-        </p>
-
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-        <p style="font-size: 12px; color: #6b7280; text-align: center;">
-          Best regards,<br>
-          The Documind Team
-        </p>
-      </div>
-    `,
-  };
-};
-
 export default async function handler(req, res) {
   console.log('=== Daily Reminders Cron Started ===');
 
@@ -88,14 +21,12 @@ export default async function handler(req, res) {
     const today = new Date().toISOString().split('T')[0];
     const dailyLimits = { free: 10, pro: 25, legend: 50 };
 
-    // Current UTC time rounded to minutes → "HH:MM"
+    // Current UTC time - this cron should run at 4:30 UTC (10:00 AM IST)
     const now = new Date();
-    const hhmm = now.toISOString().substring(11, 16);
+    console.log(`Processing reminders at ${now.toISOString()}`);
 
-    console.log(`Processing reminders for ${today} at ${hhmm} UTC`);
-
-    // Get all users with notification settings
-    const { data: users, error: usersError } = await supabaseAdmin
+    // Get all users with notification settings enabled
+    const { data: users, error: usersError } = await supabase
       .from('users')
       .select('id, email, name, subscription_tier, notification_settings')
       .not('notification_settings', 'is', null);
@@ -106,23 +37,23 @@ export default async function handler(req, res) {
 
     console.log(`Found ${users?.length || 0} total users`);
 
-    // Filter users who:
-    // - have email + prompt reminders enabled
-    // - have reminderTime matching current time
+    // Filter users for IST reminders (since cron runs at 10:00 AM IST)
     const eligibleUsers = (users || []).filter(user => {
       const settings = user.notification_settings || {};
       return (
         settings.emailNotifications &&
         settings.promptReminders &&
-        settings.reminderTime === hhmm
+        // For now, send to all users who have reminders enabled
+        // Later you can add timezone-specific logic
+        settings.reminderTime === '10:00' // Default IST time
       );
     });
 
-    console.log(`Eligible users this minute: ${eligibleUsers.length}`);
+    console.log(`Eligible users for IST reminders: ${eligibleUsers.length}`);
 
     if (eligibleUsers.length === 0) {
       return res.status(200).json({
-        message: 'No reminders this run',
+        message: 'No reminders needed for IST timezone',
         stats: { totalUsers: users?.length || 0, eligibleUsers: 0 },
         timestamp: new Date().toISOString(),
       });
@@ -157,6 +88,7 @@ export default async function handler(req, res) {
       const usedPrompts = usageLookup[user.id] || 0;
       const remainingPrompts = userLimit - usedPrompts;
 
+      // Send reminder if user has remaining prompts and hasn't used 80% of daily limit
       if (remainingPrompts > 0 && usedPrompts < userLimit * 0.8) {
         remindersToSend.push({
           userId: user.id,
@@ -173,7 +105,7 @@ export default async function handler(req, res) {
 
     if (remindersToSend.length === 0) {
       return res.status(200).json({
-        message: 'No reminders needed',
+        message: 'No reminders needed - users have used most of their daily limits',
         stats: {
           totalUsers: users?.length || 0,
           eligibleUsers: eligibleUsers.length,
@@ -204,6 +136,7 @@ export default async function handler(req, res) {
 
           const result = await transporter.sendMail(mailOptions);
 
+          // Log successful notification
           await supabaseAdmin.from('notification_log').insert({
             user_id: reminder.userId,
             email_type: 'dailyReminder',
@@ -218,6 +151,7 @@ export default async function handler(req, res) {
         } catch (error) {
           console.error(`❌ Failed to send reminder to ${reminder.email}:`, error);
 
+          // Log failed notification
           await supabaseAdmin.from('notification_log').insert({
             user_id: reminder.userId,
             email_type: 'dailyReminder',
@@ -238,7 +172,7 @@ export default async function handler(req, res) {
     console.log(`Reminders completed: ${successful} sent, ${failed} failed`);
 
     res.status(200).json({
-      message: 'Reminders processed',
+      message: 'Daily reminders processed for IST timezone',
       stats: {
         totalUsers: users?.length || 0,
         eligibleUsers: eligibleUsers.length,

@@ -1,9 +1,12 @@
 import { useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 import { LogIn, LogOut, User, Mail } from 'lucide-react';
+import { useSessionExpiry } from '../hooks/useSessionExpiry'; 
 
 export default function AuthButton() {
   const user = useUser();
   const supabase = useSupabaseClient();
+
+  useSessionExpiry();
 
   const handleSignIn = async () => {
     const redirectTo =
@@ -17,10 +20,13 @@ export default function AuthButton() {
         redirectTo,
       },
     });
+
+    localStorage.setItem('login_time', Date.now().toString());
   };
   
 
   const handleSignOut = async () => {
+    localStorage.removeItem('login_time');
     await supabase.auth.signOut();
   };
 
