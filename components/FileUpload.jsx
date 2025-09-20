@@ -22,12 +22,6 @@ export default function FileUpload({
   const processFile = async (file) => {
     const fileName = file.name.toLowerCase();
 
-    // Validate file size
-    if (file.size > maxFileSize) {
-      toast.error(`File "${file.name}" exceeds ${Math.round(maxFileSize / 1024 / 1024)}MB limit`);
-      return null;
-    }
-
     // Define all supported file types
     const allowedTypes = [
       'application/pdf',
@@ -223,7 +217,23 @@ export default function FileUpload({
     }
   };
 
-  const onDrop = useCallback(async (acceptedFiles) => {
+  const onDrop = useCallback(async (acceptedFiles, rejectedFiles) => {
+    // Handle rejected files first (size/type validation)
+    if (rejectedFiles.length > 0) {
+      rejectedFiles.forEach(rejection => {
+        const { file, errors } = rejection;
+        errors.forEach(error => {
+          if (error.code === 'file-too-large') {
+            toast.error(`File "${file.name}" exceeds ${Math.round(maxFileSize / 1024 / 1024)}MB limit`);
+          } else if (error.code === 'file-invalid-type') {
+            toast.error(`"${file.name}" is not a supported file type`);
+          } else {
+            toast.error(`Error with "${file.name}": ${error.message}`);
+          }
+        });
+      });
+    }
+
     if (!acceptedFiles.length) return;
 
     // Check file count limit
@@ -272,7 +282,7 @@ export default function FileUpload({
       setCurrentUpload(null);
       setCurrentStep('');
     }
-  }, [user, supabase, onUpload, inChat, onAddFile, maxFiles]);
+  }, [user, supabase, onUpload, inChat, onAddFile, maxFiles, maxFileSize]);
 
   // Define accepted file types
   const acceptedTypes = {
@@ -290,7 +300,11 @@ export default function FileUpload({
     accept: acceptedTypes,
     multiple: !inChat && maxFiles > 1,
     disabled: uploading,
-    maxSize: maxFileSize
+    maxSize: maxFileSize, // This will trigger rejection for oversized files
+    onDropRejected: (rejectedFiles) => {
+      // This is handled in onDrop callback above
+      console.log('Files rejected:', rejectedFiles);
+    }
   });
 
   const renderFileTypeSupport = () => {

@@ -1,3 +1,105 @@
+import nodemailer from 'nodemailer';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
+// Create nodemailer transporter
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_EMAIL,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+};
+
+// Daily reminder email template
+const getDailyReminderTemplate = (userName, remainingPrompts, totalPrompts, tier) => {
+  const subject = `🧠 You have ${remainingPrompts} prompts remaining today!`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Daily Prompt Reminder - DocuMind</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
+            .container { max-width: 600px; margin: 0 auto; background-color: white; }
+            .header { background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); padding: 40px 20px; text-align: center; }
+            .header h1 { color: white; margin: 0; font-size: 28px; }
+            .content { padding: 40px 20px; }
+            .prompt-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 20px 0; text-align: center; }
+            .prompt-number { font-size: 48px; font-weight: bold; color: #3b82f6; margin-bottom: 8px; }
+            .cta-button { display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 20px 0; }
+            .footer { background: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-size: 14px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🧠 DocuMind</h1>
+                <p style="color: #e0e7ff; margin: 10px 0 0 0;">Your AI Document Assistant</p>
+            </div>
+            
+            <div class="content">
+                <h2 style="color: #1f2937; margin-bottom: 20px;">Don't forget your daily prompts!</h2>
+                
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                    Hi ${userName}! 👋
+                </p>
+                
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                    You still have unused prompts for today. Don't let them go to waste!
+                </p>
+                
+                <div class="prompt-card">
+                    <div class="prompt-number">${remainingPrompts}</div>
+                    <p style="margin: 0; color: #64748b;">prompts remaining today</p>
+                    <p style="margin: 8px 0 0 0; color: #94a3b8; font-size: 14px;">out of ${totalPrompts} total</p>
+                </div>
+                
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                    Upload a document, ask questions, or get AI-powered insights. Your prompts reset at midnight, so use them while you can!
+                </p>
+                
+                <div style="text-align: center;">
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/dashboard" class="cta-button">
+                        Start Chatting →
+                    </a>
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 40px 0;">
+                
+                <p style="color: #9ca3af; font-size: 14px;">
+                    💡 <strong>Quick ideas:</strong> Summarize a research paper, extract key points from meeting notes, 
+                    or analyze financial reports. Your AI assistant is ready to help!
+                </p>
+            </div>
+            
+            <div class="footer">
+                <p>You're receiving this because you enabled daily prompt reminders.</p>
+                <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/settings" style="color: #3b82f6;">Update preferences</a> | <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}" style="color: #3b82f6;">Visit DocuMind</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
+  
+  return { subject, html };
+};
+
 export default async function handler(req, res) {
   console.log('=== Daily Reminders Cron Started ===');
 
@@ -25,8 +127,8 @@ export default async function handler(req, res) {
     const now = new Date();
     console.log(`Processing reminders at ${now.toISOString()}`);
 
-    // Get all users with notification settings enabled
-    const { data: users, error: usersError } = await supabase
+    // FIXED: Get all users with notification settings enabled
+    const { data: users, error: usersError } = await supabaseAdmin
       .from('users')
       .select('id, email, name, subscription_tier, notification_settings')
       .not('notification_settings', 'is', null);
@@ -37,15 +139,12 @@ export default async function handler(req, res) {
 
     console.log(`Found ${users?.length || 0} total users`);
 
-    // Filter users for IST reminders (since cron runs at 10:00 AM IST)
+    // FIXED: Filter users with correct settings structure
     const eligibleUsers = (users || []).filter(user => {
       const settings = user.notification_settings || {};
       return (
-        settings.emailNotifications &&
-        settings.promptReminders &&
-        // For now, send to all users who have reminders enabled
-        // Later you can add timezone-specific logic
-        settings.reminderTime === '10:00' // Default IST time
+        settings.emailNotifications === true &&
+        settings.promptReminders === true
       );
     });
 
@@ -59,7 +158,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Fetch usage data for eligible users
+    // FIXED: Fetch usage data with correct column name
     const userIds = eligibleUsers.map(u => u.id);
     let todayUsage = [];
     if (userIds.length > 0) {
@@ -67,10 +166,11 @@ export default async function handler(req, res) {
         .from('daily_usage')
         .select('user_id, prompts_used')
         .in('user_id', userIds)
-        .eq('date', today);
+        .eq('usage_date', today); // FIXED: Changed from 'date' to 'usage_date'
 
       if (usageError) {
         console.error('Error fetching usage data:', usageError);
+        // Don't fail the entire process if usage data fetch fails
       } else {
         todayUsage = usageData || [];
       }
@@ -88,7 +188,7 @@ export default async function handler(req, res) {
       const usedPrompts = usageLookup[user.id] || 0;
       const remainingPrompts = userLimit - usedPrompts;
 
-      // Send reminder if user has remaining prompts and hasn't used 80% of daily limit
+      // FIXED: Send reminder if user has remaining prompts and hasn't used 80% of daily limit
       if (remainingPrompts > 0 && usedPrompts < userLimit * 0.8) {
         remindersToSend.push({
           userId: user.id,
@@ -136,7 +236,7 @@ export default async function handler(req, res) {
 
           const result = await transporter.sendMail(mailOptions);
 
-          // Log successful notification
+          // FIXED: Log successful notification with correct timestamp
           await supabaseAdmin.from('notification_log').insert({
             user_id: reminder.userId,
             email_type: 'dailyReminder',

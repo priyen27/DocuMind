@@ -44,7 +44,7 @@ const emailTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/dashboard" 
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard" 
              style="background-color: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
             Go to Dashboard
           </a>
@@ -54,7 +54,7 @@ const emailTemplates = {
         <p style="font-size: 12px; color: #6b7280; text-align: center;">
           Best regards,<br>
           The Documind Team<br>
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/settings" style="color: #3B82F6;">Manage Preferences</a>
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/settings" style="color: #3B82F6;">Manage Preferences</a>
         </p>
       </div>
     `
@@ -77,7 +77,7 @@ const emailTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/dashboard" 
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard" 
              style="background-color: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
             View Results
           </a>
@@ -113,14 +113,14 @@ const emailTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/chat" 
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/chat" 
              style="background-color: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
             Start Analyzing Files
           </a>
         </div>
 
         <p style="font-size: 12px; color: #6b7280;">
-          You can disable these reminders in your <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/settings" style="color: #3B82F6;">account settings</a>.
+          You can disable these reminders in your <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/settings" style="color: #3B82F6;">account settings</a>.
         </p>
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
@@ -134,17 +134,15 @@ const emailTemplates = {
 };
 
 export default async function handler(req, res) {
-  console.log('=== Email API Handler Started (Nodemailer) ===');
-  console.log('Method:', req.method);
-  console.log('Body:', req.body);
-
+  // Method check
   if (req.method !== 'POST') {
+    console.log('❌ Invalid method:', req.method);
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   // Check environment variables
   if (!process.env.GMAIL_EMAIL || !process.env.GMAIL_APP_PASSWORD) {
-    console.error('Missing Gmail credentials');
+    console.error('❌ Missing Gmail credentials');
     return res.status(500).json({ 
       message: 'Email service not configured',
       details: 'Gmail credentials missing' 
@@ -152,20 +150,24 @@ export default async function handler(req, res) {
   }
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('Missing Supabase configuration');
+    console.error('❌ Missing Supabase configuration');
     return res.status(500).json({ message: 'Database service not configured' });
   }
 
   try {
     const { userId, emailType, data = {} } = req.body;
 
+    console.log('📝 Request Data:', { userId, emailType, data });
+
     if (!userId || !emailType) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({ message: 'Missing required fields: userId and emailType are required' });
     }
 
-    console.log(`Processing email request: ${emailType} for user: ${userId}`);
+    console.log(`🔍 Processing email request: ${emailType} for user: ${userId}`);
 
     // Get user data
+    console.log('🔍 Fetching user from Supabase...');
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('email, name, notification_settings')
@@ -173,20 +175,22 @@ export default async function handler(req, res) {
       .single();
 
     if (userError) {
-      console.error('Supabase user fetch error:', userError);
+      console.error('❌ Supabase user fetch error:', userError);
       return res.status(404).json({ message: 'User not found', error: userError.message });
     }
 
     if (!user) {
+      console.log('❌ User not found in database');
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log(`Found user: ${user.email}`);
+    console.log(`✅ Found user: ${user.email}`);
+    console.log('📋 User notification settings:', user.notification_settings);
 
     // Check if email notifications are enabled
     const notificationSettings = user.notification_settings || {};
     if (!notificationSettings.emailNotifications) {
-      console.log('Email notifications disabled for user');
+      console.log('⚠️ Email notifications disabled for user');
       
       // Still log the skipped notification
       await supabaseAdmin
@@ -205,12 +209,14 @@ export default async function handler(req, res) {
     // Get email template
     const template = emailTemplates[emailType];
     if (!template) {
-      console.error(`Invalid email type: ${emailType}`);
+      console.error(`❌ Invalid email type: ${emailType}`);
       return res.status(400).json({ 
         message: 'Invalid email type', 
         availableTypes: Object.keys(emailTemplates) 
       });
     }
+
+    console.log('📧 Generating email content...');
 
     // Generate email content
     let htmlContent;
@@ -236,10 +242,11 @@ export default async function handler(req, res) {
         );
         break;
       default:
+        console.error(`❌ Unsupported email type: ${emailType}`);
         return res.status(400).json({ message: 'Unsupported email type' });
     }
 
-    console.log('Email content generated, creating transporter...');
+    console.log('📧 Email content generated, creating transporter...');
 
     // Create transporter and send email
     const transporter = createTransporter();
@@ -251,21 +258,23 @@ export default async function handler(req, res) {
       html: htmlContent,
     };
 
-    console.log('Sending email with options:', {
+    console.log('📤 Sending email with options:', {
       from: mailOptions.from,
       to: mailOptions.to,
-      subject: mailOptions.subject
+      subject: mailOptions.subject,
+      htmlLength: htmlContent.length
     });
 
     const result = await transporter.sendMail(mailOptions);
 
-    console.log('Nodemailer response:', result);
+    console.log('✅ Nodemailer response:', result);
 
     if (!result.messageId) {
       throw new Error('Failed to send email - no message ID returned');
     }
 
     // Log successful notification
+    console.log('📝 Logging successful notification...');
     const logResult = await supabaseAdmin
       .from('notification_log')
       .insert({
@@ -278,7 +287,7 @@ export default async function handler(req, res) {
       });
 
     if (logResult.error) {
-      console.error('Failed to log notification:', logResult.error);
+      console.error('⚠️ Failed to log notification:', logResult.error);
       // Don't fail the request if logging fails
     }
 
@@ -292,7 +301,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('❌ Email sending error:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Error stack:', error.stack);
 
     // Log failed notification
     try {
@@ -308,7 +317,7 @@ export default async function handler(req, res) {
           });
       }
     } catch (logError) {
-      console.error('Failed to log notification error:', logError);
+      console.error('❌ Failed to log notification error:', logError);
     }
 
     res.status(500).json({ 
