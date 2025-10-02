@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
-import gemini from '../../lib/gemini';
+import groq from '../../lib/groq';
 
 // Create admin client with service role key (bypasses RLS)
 const supabaseAdmin = createClient(
@@ -178,7 +178,7 @@ export default async function handler(req, res) {
     }
 
     // Generate AI response with multi-file support
-    const aiResponse = await gemini.generateResponse(
+    const aiResponse = await groq.generateResponse(
       conversationHistory, 
       combinedContext, 
       allImageData.length > 0 ? allImageData : null,

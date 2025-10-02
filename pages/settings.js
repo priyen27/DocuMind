@@ -532,7 +532,7 @@ export default function Settings() {
 
   const tabs = [
     { id: 'profile', name: 'Profile', icon: User },
-    { id: 'preferences', name: 'Preferences', icon: Bell },
+    // { id: 'preferences', name: 'Preferences', icon: Bell },
     { id: 'usage', name: 'Usage & Billing', icon: Zap },
     { id: 'privacy', name: 'Privacy & Security', icon: Shield },
     { id: 'data', name: 'Data Management', icon: Download }

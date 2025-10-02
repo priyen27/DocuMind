@@ -656,7 +656,8 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
     }
 
     const userMessage = inputMessage.trim();
-    setInputMessage('');
+    
+    // 🔥 DON'T clear input yet - wait for success
     setIsLoading(true);
 
     let tempUserMessage = null;
@@ -695,6 +696,9 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
 
       const data = await response.json();
       
+      // ✅ Only clear input on SUCCESS
+      setInputMessage('');
+      
       setMessages(prev => {
         const withoutTemp = prev.filter(msg => msg.id !== tempUserMessage?.id);
         return [
@@ -719,6 +723,8 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
     } catch (error) {
       console.error('Error sending message:', error);
       
+      setMessages(prev => prev.filter(msg => msg.id !== tempUserMessage?.id));
+      
       if (error.message.includes('limit')) {
         await checkDailyUsage();
         toast.error(error.message);
@@ -726,7 +732,6 @@ export default function ChatInterface({ sessionId, fileId, onFileUpload, current
         toast.error('Failed to send message. Please try again.');
       }
       
-      setMessages(prev => prev.filter(msg => msg.id !== tempUserMessage.id));
     } finally {
       setIsLoading(false);
     }
